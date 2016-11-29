@@ -11,7 +11,7 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
 
     Args:
         cell: a tensorflow rnn_cell instance
-        decoder_inputs: a list of 2D Tensors, each Tensor has shape (batch_size, cell.input_size)
+        decoder_inputs: a list of 2D Tensors, each Tensor has shape (batch_size, input_size)
         initial_state: the final state after encoding, if cell is a LSTM,
             then the state should be a tuple of two tensors
         attention_states: a 3D Tensor with shape (batch_size, attention_len, attention_size). The usual case for
@@ -40,7 +40,7 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
         raise ValueError("Must provide inputs to pointer decoder")
 
     # check attention states
-    if attention_states.get_shape[1].value is None and attention_states.get_shape[2].value is None:
+    if attention_states.get_shape()[1].value is None and attention_states.get_shape()[2].value is None:
         raise ValueError("Shape[1] and Shape[2] of the attention states must be known")
 
     # check test time and training time inputs
@@ -95,18 +95,18 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
             # run one step of decoder
             hid, state = cell(decoder_input, state)
 
-            if feed_prev and prev is not None:  # testing
+            if feed_prev and index > 0:  # testing
                 prev = tf.arg_max(prev, dimension=1)
+                prev = tf.cast(prev, tf.int32)
                 indices = tf.range(start=0, limit=batch_size)
                 indices = tf.pack(axis=1, values=(indices, prev))
-                prev = tf.gather_nd(prev, indices=indices)
+                prev = tf.gather_nd(encoder_inputs, indices=indices)
                 hid, state = cell(prev, state)
-
             # run attention
             output = attention(hid)
             outputs.append(output)
             prev = output
-            # TODO: Return outputs
+        return outputs
 
 
 
