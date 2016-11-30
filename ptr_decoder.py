@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.python.ops import rnn_cell
-import numpy as np
 
 
 def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
@@ -40,8 +39,8 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
         raise ValueError("Must provide inputs to pointer decoder")
 
     # check attention states
-    if attention_states.get_shape()[1].value is None and attention_states.get_shape()[2].value is None:
-        raise ValueError("Shape[1] and Shape[2] of the attention states must be known")
+    if attention_states.get_shape()[2].value is None:
+        raise ValueError("Shape[2] of the attention states must be known")
 
     # check test time and training time inputs
     if feed_prev:
@@ -52,15 +51,17 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
             raise ValueError("Encoder inputs should not be provided in train time")
 
     with tf.variable_scope("decoder" or scope):
-        if encoder_inputs:
-            encoder_inputs = tf.pack(encoder_inputs)
-            encoder_inputs = tf.transpose(encoder_inputs, (1, 0, 2))
         attention_len = attention_states.get_shape()[1].value
         attention_size = attention_states.get_shape()[2].value
         batch_size = attention_states.get_shape()[0].value
         state = initial_state
         prev = None
         outputs = []
+        if attention_len is None:
+            attention_len = attention_states.get_shape()[1]
+        if encoder_inputs:
+            encoder_inputs = tf.pack(encoder_inputs)
+            encoder_inputs = tf.transpose(encoder_inputs, (1, 0, 2))
 
         # reshape attention_state to 4D Tensor to do convolution operation
         attention_states = tf.reshape(attention_states, (-1, attention_len, 1, attention_size))
@@ -69,7 +70,7 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
         kernel = tf.get_variable(name="Att_W1", shape=(1, 1, attention_size, attention_size), dtype=tf.float32,
                                  initializer=tf.truncated_normal_initializer(stddev=stddv or 1.0))
         hidden_feature = tf.nn.conv2d(attention_states, kernel, (1, 1, 1, 1), padding="SAME")
-        v = tf.get_variable(name="Att_v", shape=attention_size,
+        v = tf.get_variable(name="Att_V", shape=attention_size,
                             initializer=tf.truncated_normal_initializer(stddev=stddv or 1.0))
 
         # define attention function
@@ -82,9 +83,8 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
                 query_feature = tf.reshape(query_feature, (-1, 1, 1, attention_size))
 
                 # compute attention vector u, should be (batch_size, attention_len)
-                attention_vector = tf.reduce_sum(v * tf.nn.tanh(query_feature + hidden_feature),
-                                                 reduction_indices=[2, 3])
-                s = tf.nn.softmax(attention_vector, name="pointer")
+                s = tf.reduce_sum(v * tf.nn.tanh(query_feature + hidden_feature), reduction_indices=[2, 3])
+                # s = tf.nn.softmax(attention_vector, name="pointer")
             return s
 
         # iterate over decoder inputs
