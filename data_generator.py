@@ -32,17 +32,17 @@ def sorting_generator(seq_len, batch_size, input_dim=1, is_train=True):
 
     # sorted sequences
     sorted_sequences = np.sort(sequences, axis=0)
-    sorted_index = np.argsort(sequences, axis=0).reshape((batch_size, seq_len * input_dim))
+    sorted_index = np.squeeze(np.argsort(sequences, axis=0))
     # targets
-    targets = np.zeros((seq_len+1, batch_size, seq_len + 1))
+    targets = np.zeros((seq_len, batch_size, seq_len))
     for i in range(0, batch_size):
-        targets[np.arange(seq_len), i, sorted_index[i]] = 1
-    targets[-1, :, -1] = 1
+        targets[np.arange(seq_len), i, sorted_index[:, i]] = 1
+    # targets[-1, :, -1] = 1
 
     if is_train:
-        decoder_inputs = np.append(GO, sorted_sequences[:, :, :], axis=0)
+        decoder_inputs = np.append(GO, sorted_sequences[:-1, :, :], axis=0)
     else:
-        decoder_inputs = np.append(GO, sequences[:, :, :], axis=0)
+        decoder_inputs = np.append(GO, sequences[:-1, :, :], axis=0)
 
     return sequences, targets, decoder_inputs
 

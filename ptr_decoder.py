@@ -91,17 +91,23 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
         for index, decoder_input in enumerate(decoder_inputs):
             if index > 0:
                 tf.get_variable_scope().reuse_variables()
-
+            inp = rnn_cell._linear(decoder_input, cell.output_size, True, scope="embedding")
             # run one step of decoder
-            hid, state = cell(decoder_input, state)
+            hid, state = cell(inp, state)
 
             if feed_prev and index > 0:  # testing
+                print prev.get_shape()
+                print encoder_inputs
                 prev = tf.arg_max(prev, dimension=1)
                 prev = tf.cast(prev, tf.int32)
                 indices = tf.range(start=0, limit=batch_size)
                 indices = tf.pack(axis=1, values=(indices, prev))
                 prev = tf.gather_nd(encoder_inputs, indices=indices)
+                print prev
+                prev = rnn_cell._linear(prev, cell.output_size, True, scope="embedding")
                 hid, state = cell(prev, state)
+
+
             # run attention
             output = attention(hid)
             outputs.append(output)

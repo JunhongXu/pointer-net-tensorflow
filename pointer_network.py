@@ -37,13 +37,13 @@ class PointerNetwork(object):
             self.encoder_inps.append(encoder_inp)
 
         self.decoder_inps = []
-        for i in range(0, max_seq_len + 1):
+        for i in range(0, max_seq_len):
             decoder_inp = tf.placeholder(dtype=tf.float32, name="decoder_input_%s" % i, shape=(batch_size, input_dim))
             self.decoder_inps.append(decoder_inp)
 
         self.targets = []
-        for i in range(0, max_seq_len + 1):
-            target = tf.placeholder(dtype=tf.float32, name="target_%s" %i, shape=(batch_size, max_seq_len + 1))
+        for i in range(0, max_seq_len):
+            target = tf.placeholder(dtype=tf.float32, name="target_%s" %i, shape=(batch_size, max_seq_len))
             self.targets.append(target)
 
         if layer > 1:
@@ -73,7 +73,7 @@ class PointerNetwork(object):
             # encoder outputs need for attention
             encoder_outputs, final_state = tf.nn.rnn(self.cell, self.encoder_inps, dtype=tf.float32)
 
-            encoder_outputs = [tf.zeros(shape=(self.batch_size, self.hidden_unit), dtype=tf.float32)] + encoder_outputs
+            # encoder_outputs = [tf.zeros(shape=(self.batch_size, self.hidden_unit), dtype=tf.float32)] + encoder_outputs
             encoder_outputs = [tf.reshape(out, (-1, 1, self.hidden_unit)) for out in encoder_outputs]
             encoder_outputs = tf.concat(1, encoder_outputs)
 
@@ -118,6 +118,9 @@ class PointerNetwork(object):
         test_loss = tf.reduce_mean(loss)
 
         optimizer = tf.train.AdamOptimizer(self.lr)
-        train_op = optimizer.minimize(loss)
+        grads = optimizer.compute_gradients(loss, tf.trainable_variables())
+        grads = [(tf.clip_by_value(grad, -self.grad_clip, self.grad_clip), var)
+                 for grad, var in grads]
+        train_op = optimizer.apply_gradients(grads)
         return train_op, loss, test_loss
 
