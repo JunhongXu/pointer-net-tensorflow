@@ -27,27 +27,32 @@ class PointerNetwork(object):
         self.grad_clip = grad_clip
         self.batch_size = batch_size
         self.cell = tf.nn.rnn_cell.BasicLSTMCell(hidden_unit, state_is_tuple=True)
-        self.encoder_inps = tf.placeholder(dtype=tf.float32, name="encoder_inputs",
-                                           shape=(batch_size, max_seq_len, input_dim))
-        # targets should be one-hot vector
-        self.targets = tf.placeholder(name="targets", shape=(batch_size, max_seq_len),
-                                      dtype=tf.int32)
-        self.decoder_inps = tf.placeholder(dtype=tf.float32, name="decoder_inputs",
-                                           shape=(batch_size, max_seq_len, input_dim))
+        self.lr = lr
+        self.hidden_unit = hidden_unit
+
+        # define ecoder inputs
+        self.encoder_inps = []
+        for i in range(0, max_seq_len):
+            encoder_inp = tf.placeholder(dtype=tf.float32, name="encoder_input_%s" % i, shape=(batch_size, input_dim))
+            self.encoder_inps.append(encoder_inp)
+
+        self.decoder_inps = []
+        for i in range(0, max_seq_len + 1):
+            decoder_inp = tf.placeholder(dtype=tf.float32, name="decoder_input_%s" % i, shape=(batch_size, input_dim))
+            self.decoder_inps.append(decoder_inp)
+
+        self.targets = []
+        for i in range(0, max_seq_len + 1):
+            target = tf.placeholder(dtype=tf.float32, name="target_%s" %i, shape=(batch_size, max_seq_len + 1))
+            self.targets.append(target)
+
         if layer > 1:
             self.cell = tf.nn.rnn_cell.MultiRNNCell(cells=[self.cell] * layer)
-        print "Building graph"
-        # build training graph
-        self.prediction, self.losses = self.build(feed_prev=False)
-        # build testing graph, reusing variables
-        tf.get_variable_scope().reuse_variables()
-        self.validation = self.build(feed_prev=True)
-        self.params = tf.trainable_variables()
-        print "Building optimizer"
-        self.opt = self.build_optimizer(lr)
-        print "Finished"
 
-    def build(self, feed_prev):
+        self.decoder_outputs, self.predictions = self.build()
+        self.train_op, self.loss, self.test_loss = self.build_optimizer()
+
+    def build(self):
         """
         Build the pointer network.
         The pointer network is consisted of 2 components:
@@ -65,44 +70,33 @@ class PointerNetwork(object):
             If in train mode, return outputs and losses.
         """
         with tf.variable_scope("pointer_net"):
-            # split placeholders into lists
-            decoder_inps = self._split(self.decoder_inps)
-            encoder_inps = self._split(self.encoder_inps)
-            targets = tf.split(1, self.max_seq_len, self.targets)
-            # targets = self._split(self.targets)
-            initial_state = self.cell.zero_state(dtype=tf.float32, batch_size=self.batch_size)
+            # encoder outputs need for attention
+            encoder_outputs, final_state = tf.nn.rnn(self.cell, self.encoder_inps, dtype=tf.float32)
 
-            # calculate encoder outputs and the final state, hids needed for attention
-            hids, final_state = tf.nn.rnn(self.cell, encoder_inps, initial_state=initial_state)
-            hids = tf.pack(hids, axis=1)
+            encoder_outputs = [tf.zeros(shape=(self.batch_size, self.hidden_unit), dtype=tf.float32)] + encoder_outputs
+            encoder_outputs = [tf.reshape(out, (-1, 1, self.hidden_unit)) for out in encoder_outputs]
+            encoder_outputs = tf.concat(1, encoder_outputs)
 
-            if feed_prev:
-                # for testing
-                outputs = pointer_decoder(self.cell, decoder_inps, final_state, hids, feed_prev=feed_prev,
-                                          encoder_inputs=encoder_inps)
-                # now the outputs is seq*[batch*seq], convert it to batch*seq*seq
-                # outputs = tf.pack(outputs, axis=1)
-                return outputs
+            # run decoder
+            decoder_outputs = pointer_decoder(self.cell, self.decoder_inps, final_state, encoder_outputs)
+            tf.get_variable_scope().reuse_variables()
+            predictions = pointer_decoder(self.cell, self.decoder_inps, final_state, encoder_outputs,
+                                          encoder_inputs=self.encoder_inps, feed_prev=True)
+            return decoder_outputs, predictions
 
-            # if for training, return loss and outputs
-            outputs = pointer_decoder(self.cell, decoder_inps, final_state, hids)
+    def feed_dict(self, encoder_inpt_data, decoder_inpt_data, target_data):
+        feed_dict={}
+        for placeholder, data in zip(self.encoder_inps, encoder_inpt_data):
+            feed_dict[placeholder] = data
 
-            # outputs = tf.pack(outputs, axis=1)
-            #  _outputs = tf.split(0, self.batch_size, outputs)
-            # iterate through sequence to calculate cross-entropy loss
+        for placeholder, data in zip(self.decoder_inps, decoder_inpt_data):
+            feed_dict[placeholder] = data
 
-            losses = tf.nn.seq2seq.sequence_loss(outputs, targets,
-                                                 [tf.constant(value=np.ones(self.batch_size),
-                                                              dtype=tf.float32)] * self.max_seq_len,
-                                                 average_across_timesteps=False)
-            # for output, target in zip(_outputs, targets):
-            #     loss = tf.nn.softmax_cross_entropy_with_logits(output, target)
-            #     losses.append(loss)
-            # losses = tf.transpose(tf.pack(losses), (1, 0))
-            # losses = tf.reduce_mean(tf.reduce_sum(losses, reduction_indices=1))
-        return outputs, losses
+        for placeholder, data in zip(self.targets, target_data):
+            feed_dict[placeholder] = data
+        return feed_dict
 
-    def build_optimizer(self, lr):
+    def build_optimizer(self):
         """
         Build the optimizer for training
 
@@ -113,23 +107,17 @@ class PointerNetwork(object):
         Return:
             An optimizer op
         """
-        optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-        # clip the gradients
-        grads = optimizer.compute_gradients(self.losses, var_list=self.params)
-        clipped_grads = [(tf.clip_by_value(grad, clip_value_max=self.grad_clip, clip_value_min=-self.grad_clip), var)
-                         for grad, var in grads]
-        return optimizer.apply_gradients(clipped_grads)
+        loss = 0.0
+        for output ,target in zip(self.decoder_outputs, self.targets):
+            loss += tf.nn.sigmoid_cross_entropy_with_logits(output, target)
+        loss = tf.reduce_mean(loss)
 
-    def _split(self, x):
-        """
-        Split x into a list of sequences
+        test_loss = 0.0
+        for prediction, target in zip(self.decoder_outputs, self.targets):
+            test_loss += tf.nn.softmax_cross_entropy_with_logits(prediction, target)
+        test_loss = tf.reduce_mean(loss)
 
-        Args:
-            x: a 3D Tensor with shape (batch_size, max_seq_len, ?)
-        Returns: a list of 2D Tensors with shape (batch_size, ?)
-        """
-        last_dim = x.get_shape()[-1].value
-        x = tf.transpose(x, (1, 0, 2))
-        x = tf.reshape(x, (-1, last_dim))
-        x = tf.split(0, self.max_seq_len, x)
-        return x
+        optimizer = tf.train.AdamOptimizer(self.lr)
+        train_op = optimizer.minimize(loss)
+        return train_op, loss, test_loss
+

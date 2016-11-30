@@ -25,25 +25,26 @@ def sorting_generator(seq_len, batch_size, input_dim=1, is_train=True):
             "GO" symbol.
     """
     # define "GO" symbol
-    GO = np.ones((batch_size, 1, input_dim))
+    GO = np.ones((1, batch_size, input_dim))
 
     # generate random sequences
-    sequences = np.random.random((batch_size, seq_len, input_dim))
+    sequences = np.random.random((seq_len, batch_size, input_dim))
 
     # sorted sequences
-    sorted_sequences = np.sort(sequences, axis=1)
-    sorted_index = np.argsort(sequences, axis=1).reshape((batch_size, seq_len * input_dim))
+    sorted_sequences = np.sort(sequences, axis=0)
+    sorted_index = np.argsort(sequences, axis=0).reshape((batch_size, seq_len * input_dim))
     # targets
-    # targets = np.zeros((batch_size, seq_len, seq_len))
-    # for i in range(0, batch_size):
-    #   targets[i, np.arange(seq_len), sorted_index[i]] = 1
+    targets = np.zeros((seq_len+1, batch_size, seq_len + 1))
+    for i in range(0, batch_size):
+        targets[np.arange(seq_len), i, sorted_index[i]] = 1
+    targets[-1, :, -1] = 1
 
     if is_train:
-        decoder_inputs = np.append(GO, sorted_sequences, axis=1)
+        decoder_inputs = np.append(GO, sorted_sequences[:, :, :], axis=0)
     else:
-        decoder_inputs = np.append(GO, sequences, axis=1)
+        decoder_inputs = np.append(GO, sequences[:, :, :], axis=0)
 
-    return sequences, sorted_index, decoder_inputs
+    return sequences, targets, decoder_inputs
 
 
 def tsp_generator():
