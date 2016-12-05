@@ -1,3 +1,7 @@
+from __future__ import print_function
+from __future__ import division
+from __future__ import absolute_import
+import os
 import numpy as np
 import itertools
 import pandas
@@ -37,7 +41,6 @@ def sort(seq_len, batch_size, is_train=True):
     targets = np.zeros((seq_len, batch_size, seq_len))
     for i in range(0, batch_size):
         targets[np.arange(seq_len), i, sorted_index[:, i]] = 1
-    # targets[-1, :, -1] = 1
 
     if is_train:
         decoder_inputs = np.append(GO, sorted_sequences[:-1, :, :], axis=0)
@@ -87,7 +90,6 @@ def tsp_opt(points):
         A = B
     res = min([(A[d][0] + all_distances[0][d[1]], A[d][1]) for d in iter(A)])
     rres = res[1]
-    # rres.append(0)
     rres = np.asarray(rres)
     return rres
 
@@ -96,25 +98,52 @@ def generate_tsp(data_size, seq_len):
     result = []
     nodes_list = []
     for i in range(0, data_size):
-        print("Generating %sth data" % i)
         nodes = np.random.random(size=(seq_len, 2))
         nodes_list.append(nodes.flatten())
         result.append(tsp_opt(nodes))
 
     nodes_list = pandas.DataFrame(nodes_list)
     result = pandas.DataFrame(result)
-    nodes_list.to_csv("data/tsp_seq20_opt_data.csv")
-    result.to_csv("data/tsp_seq20_opt_solution.csv")
+
+    if not os.path.isfile("data/tsp_seq%s_opt_data.csv" % seq_len):
+        nodes_list.to_csv("data/tsp_seq%s_opt_data.csv" % seq_len)
+        result.to_csv("data/tsp_seq%s_opt_solution.csv" % seq_len)
+    else:
+        nodes_list.to_csv("data/tsp_seq%s_opt_data.csv" % seq_len, mode='a', header=False)
+        result.to_csv("data/tsp_seq%s_opt_solution.csv" % seq_len, mode='a', header=False)
+
+    return nodes_list.as_matrix(), result.as_matrix()
 
 
 def tsp(seq_len, batch_size, is_train=True):
     """
     Generates travelling salesman data based on sequence length and batch size.
     The data are randomly chose from /data folder. The
-    :param seq_len:
-    :param batch_size:
-    :param is_train:
-    :return:
+    Args
+        seq_len: same as "sort"
+        batch_size: same as "sort"
+        is_train: same as "sort"
+
+    Returns:
+        decoder_inpts: An unordered numpy array with shape(seq_len, batch_size, 2) representing a sequences
+            of batches of nodes. If is_train==True, return a solved tsp nodes order with a "GO" symbol, else
+            return an unsolved order with a "GO" symbol.
+            e.g. "GO" + encoder_inpts[:-1, :, :]
+        targets: A numpy array with shape(seq_len ,batch_size, seq_len). Each element is an one-hot vector representing
+            which node to choose.
+        encoder_inpts: An ordered numpy array with shape same as decoder_inpts representing solved tsp nodes order.
     """
-    map()
-    pass
+    # define "GO"
+    GO = np.ones((seq_len, 1, 2))
+
+    # read from the file
+    sequences, orders = generate_tsp(batch_size, seq_len)
+    decoder_inpts = sequences.reshape(-1, seq_len, 2).transpose(1, 0, 2)
+    targets = np.zeros((seq_len, batch_size, seq_len))
+    for i in range(0, batch_size):
+        targets[np.arange(seq_len), i, orders[i, :]] = 1
+    # append GO symbole
+    if is_train:
+        decoder_inpts = np.append(GO, decoder_inpts[:-1, :, :], axis=0)
+    else:
+        decoder_inpts = np.append(GO, np.zeros((seq_len - 1, batch_size, 1)), axis=0)
