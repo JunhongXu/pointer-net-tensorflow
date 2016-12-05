@@ -57,7 +57,7 @@ class PointerNetwork(object):
 
         self.decoder_outputs, self.predictions = self.build()
         self.train_op, self.loss, self.test_loss, self.acc = self.build_optimizer()
-        self.writer = tf.train.SummaryWriter("summary")
+        self.writer = tf.train.SummaryWriter("summary/%s" % data.__name__)
         self.writer.add_graph(tf.get_default_graph())
         self.summary = self.build_summary()
 

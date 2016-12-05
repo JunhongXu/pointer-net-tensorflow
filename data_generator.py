@@ -134,16 +134,22 @@ def tsp(seq_len, batch_size, is_train=True):
         encoder_inpts: An ordered numpy array with shape same as decoder_inpts representing solved tsp nodes order.
     """
     # define "GO"
-    GO = np.ones((seq_len, 1, 2))
+    GO = np.ones((1, batch_size, 2))
 
     # read from the file
     sequences, orders = generate_tsp(batch_size, seq_len)
-    decoder_inpts = sequences.reshape(-1, seq_len, 2).transpose(1, 0, 2)
+    encoder_inpts = sequences.reshape(-1, seq_len, 2).transpose(1, 0, 2)
     targets = np.zeros((seq_len, batch_size, seq_len))
     for i in range(0, batch_size):
         targets[np.arange(seq_len), i, orders[i, :]] = 1
     # append GO symbole
     if is_train:
-        decoder_inpts = np.append(GO, decoder_inpts[:-1, :, :], axis=0)
+        s = sequences.reshape(-1, seq_len, 2)
+        print(s)
+        for index in range(0, s.shape[0]):
+            s[index] = s[index][orders[index]]
+        s = s.transpose(1, 0, 2)
+        decoder_inpts = np.append(GO, s[:-1, :, :], axis=0)
     else:
         decoder_inpts = np.append(GO, np.zeros((seq_len - 1, batch_size, 1)), axis=0)
+    return encoder_inpts, targets, decoder_inpts
