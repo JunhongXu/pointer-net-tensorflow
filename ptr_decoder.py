@@ -53,7 +53,6 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
     with tf.variable_scope("decoder" or scope):
         attention_len = attention_states.get_shape()[1].value
         attention_size = attention_states.get_shape()[2].value
-        batch_size = attention_states.get_shape()[0].value
         state = initial_state
         prev = None
         outputs = []
@@ -61,7 +60,10 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
             attention_len = attention_states.get_shape()[1]
         if encoder_inputs:
             encoder_inputs = tf.pack(encoder_inputs)
-            encoder_inputs = tf.transpose(encoder_inputs, (1, 0, 2))
+            seq_len, batch_size, dim = encoder_inputs.get_shape().as_list()
+            y = tf.transpose(encoder_inputs, (1, 0, 2))
+            y = tf.reshape(y, (-1, dim))
+            encoder_inputs = tf.split(num_split=batch_size, split_dim=0, value=y)
 
         # reshape attention_state to 4D Tensor to do convolution operation
         attention_states = tf.reshape(attention_states, (-1, attention_len, 1, attention_size))
@@ -84,34 +86,26 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
 
                 # compute attention vector u, should be (batch_size, attention_len)
                 s = tf.reduce_sum(v * tf.nn.tanh(query_feature + hidden_feature), reduction_indices=[2, 3])
-                # s = tf.nn.softmax(attention_vector, name="pointer")
             return s
 
         # iterate over decoder inputs
-        for index, decoder_input in enumerate(decoder_inputs):
+        for index, inp in enumerate(decoder_inputs):
             if index > 0:
                 tf.get_variable_scope().reuse_variables()
-            inp = rnn_cell._linear(decoder_input, cell.output_size, True, scope="embedding")
-            # run one step of decoder
-            hid, state = cell(inp, state)
 
             if feed_prev and index > 0:  # testing
-                print prev.get_shape()
-                print encoder_inputs
                 prev = tf.arg_max(prev, dimension=1)
+                indices = tf.range(0, batch_size)
                 prev = tf.cast(prev, tf.int32)
-                indices = tf.range(start=0, limit=batch_size)
-                indices = tf.pack(axis=1, values=(indices, prev))
-                prev = tf.gather_nd(encoder_inputs, indices=indices)
-                print prev
-                prev = rnn_cell._linear(prev, cell.output_size, True, scope="embedding")
-                hid, state = cell(prev, state)
-
-
+                prev = tf.pack((indices, prev), 1)
+                inp = tf.gather_nd(encoder_inputs, indices=prev)
+            x = rnn_cell._linear(inp, cell.output_size, True, scope="embedding")
+            # run one step of decoder
+            hid, state = cell(x, state)
             # run attention
             output = attention(hid)
-            outputs.append(output)
             prev = output
+            outputs.append(output)
         return outputs
 
 
