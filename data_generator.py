@@ -1,7 +1,6 @@
 from __future__ import print_function
 from __future__ import division
 from __future__ import absolute_import
-import os
 import numpy as np
 import itertools
 import pandas
@@ -50,18 +49,6 @@ def sort(seq_len, batch_size, is_train=True):
     return sequences, targets, decoder_inputs
 
 
-def tsp_a1():
-    pass
-
-
-def tsp_a2():
-    pass
-
-
-def tsp_a3():
-    pass
-
-
 def tsp_opt(points):
     """
     Calculate tsp optimal solution using dynamic programming
@@ -104,14 +91,6 @@ def generate_tsp(data_size, seq_len):
 
     nodes_list = pandas.DataFrame(nodes_list)
     result = pandas.DataFrame(result)
-
-    if not os.path.isfile("data/tsp_seq%s_opt_data.csv" % seq_len):
-        nodes_list.to_csv("data/tsp_seq%s_opt_data.csv" % seq_len)
-        result.to_csv("data/tsp_seq%s_opt_solution.csv" % seq_len)
-    else:
-        nodes_list.to_csv("data/tsp_seq%s_opt_data.csv" % seq_len, mode='a', header=False)
-        result.to_csv("data/tsp_seq%s_opt_solution.csv" % seq_len, mode='a', header=False)
-
     return nodes_list.as_matrix(), result.as_matrix()
 
 
@@ -145,11 +124,10 @@ def tsp(seq_len, batch_size, is_train=True):
     # append GO symbole
     if is_train:
         s = sequences.reshape(-1, seq_len, 2)
-        print(s)
         for index in range(0, s.shape[0]):
             s[index] = s[index][orders[index]]
         s = s.transpose(1, 0, 2)
         decoder_inpts = np.append(GO, s[:-1, :, :], axis=0)
     else:
-        decoder_inpts = np.append(GO, np.zeros((seq_len - 1, batch_size, 1)), axis=0)
+        decoder_inpts = np.append(GO, encoder_inpts[:-1, :, :], axis=0)
     return encoder_inpts, targets, decoder_inpts

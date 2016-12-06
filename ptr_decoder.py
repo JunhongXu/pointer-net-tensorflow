@@ -70,10 +70,10 @@ def pointer_decoder(cell, decoder_inputs, initial_state, attention_states,
 
         # one-by-one convolution kernel
         kernel = tf.get_variable(name="Att_W1", shape=(1, 1, attention_size, attention_size), dtype=tf.float32,
-                                 initializer=tf.truncated_normal_initializer(stddev=stddv or 1.0))
+                                 initializer=tf.truncated_normal_initializer(stddev=stddv or 0.08))
         hidden_feature = tf.nn.conv2d(attention_states, kernel, (1, 1, 1, 1), padding="SAME")
         v = tf.get_variable(name="Att_V", shape=attention_size,
-                            initializer=tf.truncated_normal_initializer(stddev=stddv or 1.0))
+                            initializer=tf.truncated_normal_initializer(stddev=stddv or 0.08))
 
         # define attention function
         def attention(query):

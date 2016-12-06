@@ -85,7 +85,7 @@ class PointerNetwork(object):
             # run decoder, for training to emulate http://arxiv.org/abs/1506.03099, and it is proved to have better
             # performance
             decoder_outputs = pointer_decoder(self.cell, self.decoder_inps, final_state, encoder_outputs,
-                                              encoder_inputs=self.encoder_inps, feed_prev=True)
+                                              feed_prev=True, encoder_inputs=self.encoder_inps)
             tf.get_variable_scope().reuse_variables()
             predictions = pointer_decoder(self.cell, self.decoder_inps, final_state, encoder_outputs,
                                           encoder_inputs=self.encoder_inps, feed_prev=True)
@@ -144,7 +144,7 @@ class PointerNetwork(object):
             acc = tf.div(acc, self.batch_size)
 
         with tf.name_scope("optimizer"):
-            optimizer = tf.train.AdamOptimizer(self.lr)
+            optimizer = tf.train.RMSPropOptimizer(self.lr)
             grads = optimizer.compute_gradients(loss, tf.trainable_variables())
             grads = [(tf.clip_by_value(grad, -self.grad_clip, self.grad_clip), var)
                      for grad, var in grads]
@@ -196,10 +196,19 @@ class PointerNetwork(object):
                 prediction = np.argmax(np.transpose(predictions, (1, 0, 2))[sample_idx], axis=1)
                 target = np.argmax(np.transpose(targets, (1, 0, 2))[sample_idx], axis=1)
                 encoder_inpts = np.transpose(encoder_inpts, (1, 0, 2))
+                target = encoder_inpts[sample_idx][target]
+                prediction = encoder_inpts[sample_idx][prediction]
+                if self.data.__name__ == "sort":
+                    target = target.flatten()
+                    prediction = prediction.flatten()
+                else:
+                    #target = encoder_inpts
+                    pass
+
                 print("------------------Testing-------------------")
                 print("Epoch %s:" % i)
                 print("Sample:\nground truth: %s\nprediction %s"
-                      % (encoder_inpts[sample_idx][target].flatten(), encoder_inpts[sample_idx][prediction].flatten()))
+                      % (target, prediction))
                 print("Test loss is %s" % test_loss)
                 print("Test accuracy is %s" % acc)
                 print("--------------------Done--------------------")
