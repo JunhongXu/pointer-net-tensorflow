@@ -25,6 +25,6 @@ To visualize in Tensorboard:
 
     $ tensorboard --logdir=summary/sort
 
-# TODO:
+# Issues:
 Implement beam search in order to re-produce the result of the original paper
 
